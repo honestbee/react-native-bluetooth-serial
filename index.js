@@ -1,5 +1,5 @@
-const ReactNative = require('react-native')
-const { Buffer } = require('buffer')
+import ReactNative from 'react-native';
+import { Buffer } from 'buffer';
 const { NativeModules, DeviceEventEmitter } = ReactNative
 const BluetoothSerial = NativeModules.BluetoothSerial
 
@@ -34,4 +34,4 @@ BluetoothSerial.write = (data) => {
   return BluetoothSerial.writeToDevice(data.toString('base64'))
 }
 
-module.exports = BluetoothSerial
+export default BluetoothSerial

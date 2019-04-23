@@ -366,6 +366,24 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
         promise.resolve(true);
     }
 
+    @ReactMethod
+    public void writeHexToDevice(String hexString, Promise promise){
+        mBluetoothService.write(hexStringToBytes(hexString));
+        promise.resolve(true);
+    }
+
+    @ReactMethod
+    public void writeTextToDevice(String Text, String encoding, Promise promise){        
+        byte[] send;
+        try {
+            send = Text.getBytes(encoding);
+        } catch (Exception e) {
+            send = Text.getBytes();
+        }
+        mBluetoothService.write(send);
+        promise.resolve(true);
+    }    
+
     /**********************/
     /** Read from device **/
 
@@ -703,4 +721,17 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
 
         mReactContext.registerReceiver(bluetoothStateReceiver, intentFilter);
     }
+    public static byte[] hexStringToBytes(String hexString) {
+      hexString = hexString.toLowerCase();
+      String[] hexStrings = hexString.split(" ");
+      byte[] bytes = new byte[hexStrings.length];
+      for (int i = 0; i < hexStrings.length; i++) {
+          char[] hexChars = hexStrings[i].toCharArray();
+          bytes[i] = (byte) (charToByte(hexChars[0]) << 4 | charToByte(hexChars[1]));
+      }
+      return bytes;
+    }
+    private static byte charToByte(char c) {
+        return (byte) "0123456789abcdef".indexOf(c);
+    }    
 }
