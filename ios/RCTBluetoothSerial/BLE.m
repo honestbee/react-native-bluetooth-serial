@@ -537,11 +537,10 @@ static bool done = false;
                 if (!done)
                 {
                     [self enableReadNotification:activePeripheral];
-                    [[self delegate] bleDidConnect];
                     isConnected = true;
                     done = true;
                 }
-
+                [[self delegate] bleDidConnect];
                 break;
             }
         }
