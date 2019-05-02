@@ -34,7 +34,14 @@ static char BTS_ADVERTISEMENT_RSSI_IDENTIFER;
             long len = [manufacturerData length];
             // skip manufacturer uuid
             NSData *data = [NSData dataWithBytes:bytes+2 length:len-2];
-            [self setBtsAdvertising: [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]];
+            NSUInteger capacity = data.length * 2;
+            NSMutableString *sbuf = [NSMutableString stringWithCapacity:capacity];
+            const unsigned char *buf = data.bytes;
+            NSInteger i;
+            for (i=0; i<data.length; ++i) {
+                [sbuf appendFormat:@"%02X", (NSUInteger)buf[i]];
+            }
+            [self setBtsAdvertising: sbuf];
         }
     }
 

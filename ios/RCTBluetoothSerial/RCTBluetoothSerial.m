@@ -22,6 +22,7 @@
 @implementation RCTBluetoothSerial
 
 RCT_EXPORT_MODULE();
+static NSString *BLUETOOTH_PRINTER_TYPE = @"BLUETOOTH";
 
 @synthesize bridge = _bridge;
 
@@ -178,7 +179,7 @@ RCT_EXPORT_METHOD(writeHexToDevice:(NSString *)hexString
     }
     return data;
 }
-RCT_EXPORT_METHOD(list:(RCTPromiseResolveBlock)resolve
+RCT_EXPORT_METHOD(handleSearch:(RCTPromiseResolveBlock)resolve
                   rejector:(RCTPromiseRejectBlock)reject)
 {
     [self scanForBLEPeripherals:3];
@@ -313,11 +314,19 @@ RCT_EXPORT_METHOD(clear:(RCTPromiseResolveBlock)resolve)
 }
 
 #pragma mark - timers
++ (NSString *) getBroacastKey {
+    return @"foundBluetoothDevices";
+}
 
 -(void)listPeripheralsTimer:(NSTimer *)timer
 {
     RCTPromiseResolveBlock resolve = [timer userInfo];
     NSMutableArray *peripherals = [self getPeripheralList];
+    [[NSNotificationCenter defaultCenter]
+     postNotificationName:[RCTBluetoothSerial getBroacastKey]
+     object:self
+     userInfo:@{ @"devices": peripherals, @"printerType": BLUETOOTH_PRINTER_TYPE}];
+
     resolve(peripherals);
 }
 
@@ -405,6 +414,10 @@ RCT_EXPORT_METHOD(clear:(RCTPromiseResolveBlock)resolve)
         NSNumber *rssi = [p btsAdvertisementRSSI];
         if (rssi) { // BLEShield doesn't provide advertised RSSI
             [peripheral setObject: rssi forKey:@"rssi"];
+        }
+        NSString *manufacturerData = [p btsAdvertising];
+        if (manufacturerData) {
+            [peripheral setObject: manufacturerData forKey:@"manufacturerData"];
         }
 
         [peripherals addObject:peripheral];

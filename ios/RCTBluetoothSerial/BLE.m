@@ -478,8 +478,12 @@ CBUUID *writeCharacteristicUUID;
 
 - (void)centralManager:(CBCentralManager *)central didDiscoverPeripheral:(CBPeripheral *)peripheral advertisementData:(NSDictionary *)advertisementData RSSI:(NSNumber *)RSSI
 {
-    if (!self.peripherals)
-        self.peripherals = [[NSMutableArray alloc] initWithObjects:peripheral,nil];
+    
+    if (!self.peripherals) {
+        self.peripherals = [[NSMutableArray alloc] initWithCapacity:1];
+        [peripheral bts_setAdvertisementData:advertisementData RSSI:RSSI];
+        [self.peripherals addObject:peripheral];
+    }
     else
     {
         for(int i = 0; i < self.peripherals.count; i++)
@@ -497,7 +501,7 @@ CBUUID *writeCharacteristicUUID;
                 return;
             }
         }
-
+        [peripheral bts_setAdvertisementData:advertisementData RSSI:RSSI];
         [self.peripherals addObject:peripheral];
 
         NSLog(@"New UUID, adding");
