@@ -23,7 +23,7 @@
 
 static bool isConnected = false;
 static int rssi = 0;
-static const int MAX_BUF_LENGTH = 20;
+static const int MAX_BUF_LENGTH = 10;
 
 // TODO should have a configurable list of services
 CBUUID *redBearLabsServiceUUID;

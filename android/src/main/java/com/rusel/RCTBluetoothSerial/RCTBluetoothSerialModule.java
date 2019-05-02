@@ -2,6 +2,10 @@ package com.rusel.RCTBluetoothSerial;
 
 import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
 
 import android.app.Activity;
@@ -23,6 +27,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
@@ -52,7 +57,7 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
     private ReactApplicationContext mReactContext;
 
     private StringBuffer mBuffer = new StringBuffer();
-
+    private List<Map<String, String>> devices = new ArrayList<>();
     // Promises
     private Promise mEnabledPromise;
     private Promise mConnectedPromise;
@@ -226,15 +231,26 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
     /**
      * List paired bluetooth devices
      */
-    public void list(Promise promise) {
+    public void handleSearch(Promise promise) {
         WritableArray deviceList = Arguments.createArray();
+        
+
         if (mBluetoothAdapter != null) {
             Set<BluetoothDevice> bondedDevices = mBluetoothAdapter.getBondedDevices();
 
             for (BluetoothDevice rawDevice : bondedDevices) {
+              if (notAddedBefore(rawDevice)) {
                 WritableMap device = deviceToWritableMap(rawDevice);
                 deviceList.pushMap(device);
+                Map<String, String> map = new HashMap<>();
+                map.put("name", rawDevice.getName());
+                map.put("address", rawDevice.getAddress());
+                devices.add(map);
+              }
             }
+            sendDevicesToReact(devices);
+            registerBluetoothDeviceDiscoveryReceiver();
+            mBluetoothAdapter.startDiscovery();            
         }
         promise.resolve(deviceList);
     }
@@ -668,6 +684,13 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
 
                 if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    if (notAddedBefore(device)) {
+                      Map<String, String> map = new HashMap<>();
+                      map.put("name", device.getName());
+                      map.put("address", device.getAddress());
+                      devices.add(map);
+                      sendDevicesToReact(devices);
+                    }
                     WritableMap d = deviceToWritableMap(device);
                     unpairedDevices.pushMap(d);
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
@@ -733,5 +756,26 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
     }
     private static byte charToByte(char c) {
         return (byte) "0123456789abcdef".indexOf(c);
-    }    
+    }
+
+    // Send bluetooth devices information to react
+    private void sendDevicesToReact(List<Map<String, String>> devices) {
+      if (!getReactApplicationContext().hasActiveCatalystInstance()) return;
+      WritableArray devicesArray = Arguments.makeNativeArray(devices);
+      WritableNativeMap result = new WritableNativeMap();
+      result.putString("printerType", "BLUETOOTH");
+      result.putArray("devices", devicesArray);
+      getReactApplicationContext()
+              .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+              .emit("devicesListener", result);
+  }
+
+  private boolean notAddedBefore(BluetoothDevice device) {
+    for (Map<String, String> addedDevice : devices) {
+        if (addedDevice.get("address").equals(device.getAddress())) {
+            return false;
+        }
+    }
+    return true;
+  }  
 }
