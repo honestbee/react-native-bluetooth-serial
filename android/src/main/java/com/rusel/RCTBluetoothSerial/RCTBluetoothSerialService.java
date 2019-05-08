@@ -1,8 +1,13 @@
 package com.rusel.RCTBluetoothSerial;
 
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableMap;
+
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -39,6 +44,15 @@ class RCTBluetoothSerialService {
     private static final String STATE_CONNECTING = "connecting"; // now initiating an outgoing connection
     private static final String STATE_CONNECTED = "connected";  // now connected to a remote device
 
+    // Device specific. This can be made configurable when we want to support multiple printers.
+    private static final int BAUDRATE = 9600;
+
+    // Divided by 10 because of additional bit start and stop
+    // https://learn.sparkfun.com/tutorials/serial-communication/rules-of-serial
+    private static final int BYTE_PER_SECOND = BAUDRATE / 10;
+
+    private static final int BUFFER_LEN = BYTE_PER_SECOND;
+    private static final long PRINT_DELAY = TimeUnit.MILLISECONDS.toMillis(250);
     /**
      * Constructor. Prepares a new RCTBluetoothSerialModule session.
      * @param module Module which handles service events
@@ -309,8 +323,8 @@ class RCTBluetoothSerialService {
                 } catch (Exception e) {
                     Log.e(TAG, "disconnected", e);
                     mModule.onError(e);
-                    connectionLost();
-                    RCTBluetoothSerialService.this.stop(); // Start the service over to restart listening mode
+                    // connectionLost();
+                    // RCTBluetoothSerialService.this.stop(); // Start the service over to restart listening mode
                     break;
                 }
             }
@@ -324,7 +338,22 @@ class RCTBluetoothSerialService {
             try {
                 String str = new String(buffer, "UTF-8");
                 if (D) Log.d(TAG, "Write in thread " + str);
-                mmOutStream.write(buffer);
+                
+                ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
+                byte[] smallbuffer = new byte[BUFFER_LEN];
+                int len;
+                while ((len = bais.read(smallbuffer)) != -1) {
+                  if (D) Log.d(TAG, "Write buffer length =  " + len);
+                  mmOutStream.write(smallbuffer, 0, len);
+                  if (D) Log.d(TAG, "Writed buffer length =  " + len);
+                  try {
+                    // Device specific, this is to wait for the data to be printed.
+                    if (D) Log.d(TAG, "Sleep for " + PRINT_DELAY);
+                    TimeUnit.MILLISECONDS.sleep(PRINT_DELAY);
+                  } catch (InterruptedException e) {
+                      // Ignore
+                  }                  
+                }                
             } catch (Exception e) {
                 Log.e(TAG, "Exception during write", e);
                 mModule.onError(e);
