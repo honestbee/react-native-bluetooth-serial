@@ -546,7 +546,7 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule impleme
      * @param eventName Name of the event
      * @param params Additional params
      */
-    private void sendEvent(String eventName, @Nullable WritableMap params) {
+    public void sendEvent(String eventName, @Nullable WritableMap params) {
         if (mReactContext.hasActiveCatalystInstance()) {
             if (D) Log.d(TAG, "Sending event: " + eventName);
             mReactContext

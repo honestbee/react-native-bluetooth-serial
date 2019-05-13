@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.os.ParcelUuid;
 import android.util.Log;
 
 import static com.rusel.RCTBluetoothSerial.RCTBluetoothSerialPackage.TAG;
@@ -34,10 +35,11 @@ class RCTBluetoothSerialService {
 
     // Member fields
     private BluetoothAdapter mAdapter;
-    private ConnectThread mConnectThread;
+    // private ConnectThread mConnectThread;
     private ConnectedThread mConnectedThread;
     private RCTBluetoothSerialModule mModule;
     private String mState;
+    private BluetoothSocket mmSocket;
 
     // Constants that indicate the current connection state
     private static final String STATE_NONE = "none";       // we're doing nothing
@@ -73,17 +75,63 @@ class RCTBluetoothSerialService {
      */
     synchronized void connect(BluetoothDevice device) {
         if (D) Log.d(TAG, "connect to: " + device);
-
-        if (mState.equals(STATE_CONNECTING)) {
-            cancelConnectThread(); // Cancel any thread attempting to make a connection
-        }
+        setState(STATE_CONNECTING);
 
         cancelConnectedThread(); // Cancel any thread currently running a connection
 
         // Start the thread to connect with the given device
-        mConnectThread = new ConnectThread(device);
-        mConnectThread.start();
-        setState(STATE_CONNECTING);
+        if (D) Log.d(TAG, "BEGIN mConnectThread");
+
+        // Always cancel discovery because it will slow down a connection
+        mAdapter.cancelDiscovery();
+        BluetoothSocket tmp = null;
+
+        // Get a BluetoothSocket for a connection with the given BluetoothDevice
+        try {
+            UUID uuid = UUID_SPP;
+            ParcelUuid[] supportedUuids = device.getUuids();
+            if (supportedUuids != null && supportedUuids.length > 0) {
+                uuid = supportedUuids[0].getUuid();
+            }              
+            tmp = device.createRfcommSocketToServiceRecord(uuid);
+        } catch (Exception e) {
+            mModule.onError(e);
+            Log.e(TAG, "Socket create() failed", e);
+        }
+        mmSocket = tmp;
+        // Make a connection to the BluetoothSocket
+        try {
+            // This is a blocking call and will only return on a successful connection or an exception
+            if (D) Log.d(TAG,"Connecting to socket...");
+            mmSocket.connect();
+            if (D) Log.d(TAG,"Connected");
+            if (D) Log.d(TAG, "Sleep for " + PRINT_DELAY*2);
+            TimeUnit.MILLISECONDS.sleep(PRINT_DELAY*2);
+        } catch (Exception e) {
+            Log.e(TAG, e.toString());
+            mModule.onError(e);
+
+            // Some 4.1 devices have problems, try an alternative way to connect
+            // See https://github.com/don/RCTBluetoothSerialModule/issues/89
+            try {
+                Log.i(TAG,"Trying fallback...");
+                mmSocket = (BluetoothSocket) device.getClass().getMethod("createRfcommSocket", new Class[] {int.class}).invoke(device,1);
+                mmSocket.connect();
+                Log.i(TAG,"Connected");
+            } catch (Exception e2) {
+                Log.e(TAG, "Couldn't establish a Bluetooth connection.");
+                mModule.onError(e2);
+                try {
+                    mmSocket.close();
+                } catch (Exception e3) {
+                    Log.e(TAG, "unable to close() socket during connection failure", e3);
+                    mModule.onError(e3);
+                }
+                connectionFailed();
+                return;
+            }
+        }
+        connectionSuccess(mmSocket, device);  // Start the connected thread                
     }
 
     /**
@@ -101,15 +149,7 @@ class RCTBluetoothSerialService {
      */
     void write(byte[] out) {
         if (D) Log.d(TAG, "Write in service, state is " + STATE_CONNECTED);
-        ConnectedThread r; // Create temporary object
-
-        // Synchronize a copy of the ConnectedThread
-        synchronized (this) {
-            if (!isConnected()) return;
-            r = mConnectedThread;
-        }
-
-        r.write(out); // Perform the write unsynchronized
+        mConnectedThread.write(out);
     }
 
     /**
@@ -118,7 +158,6 @@ class RCTBluetoothSerialService {
     synchronized void stop() {
         if (D) Log.d(TAG, "stop");
 
-        cancelConnectThread();
         cancelConnectedThread();
 
         setState(STATE_NONE);
@@ -152,9 +191,6 @@ class RCTBluetoothSerialService {
     private synchronized void connectionSuccess(BluetoothSocket socket, BluetoothDevice device) {
         if (D) Log.d(TAG, "connected");
 
-        cancelConnectThread(); // Cancel any thread attempting to make a connection
-        cancelConnectedThread(); // Cancel any thread currently running a connection
-
         // Start the thread to manage the connection and perform transmissions
         mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
@@ -181,102 +217,12 @@ class RCTBluetoothSerialService {
     }
 
     /**
-     * Cancel connect thread
-     */
-    private void cancelConnectThread () {
-        if (mConnectThread != null) {
-            mConnectThread.cancel();
-            mConnectThread = null;
-        }
-    }
-
-    /**
      * Cancel connected thread
      */
     private void cancelConnectedThread () {
         if (mConnectedThread != null) {
             mConnectedThread.cancel();
             mConnectedThread = null;
-        }
-    }
-
-    /**
-     * This thread runs while attempting to make an outgoing connection
-     * with a device. It runs straight through; the connection either
-     * succeeds or fails.
-     */
-    private class ConnectThread extends Thread {
-        private BluetoothSocket mmSocket;
-        private final BluetoothDevice mmDevice;
-
-        ConnectThread(BluetoothDevice device) {
-            mmDevice = device;
-            BluetoothSocket tmp = null;
-
-            // Get a BluetoothSocket for a connection with the given BluetoothDevice
-            try {
-                tmp = device.createRfcommSocketToServiceRecord(UUID_SPP);
-            } catch (Exception e) {
-                mModule.onError(e);
-                Log.e(TAG, "Socket create() failed", e);
-            }
-            mmSocket = tmp;
-        }
-
-        public void run() {
-            if (D) Log.d(TAG, "BEGIN mConnectThread");
-            setName("ConnectThread");
-
-            // Always cancel discovery because it will slow down a connection
-            mAdapter.cancelDiscovery();
-
-            // Make a connection to the BluetoothSocket
-            try {
-                // This is a blocking call and will only return on a successful connection or an exception
-                if (D) Log.d(TAG,"Connecting to socket...");
-                mmSocket.connect();
-                if (D) Log.d(TAG,"Connected");
-            } catch (Exception e) {
-                Log.e(TAG, e.toString());
-                mModule.onError(e);
-
-                // Some 4.1 devices have problems, try an alternative way to connect
-                // See https://github.com/don/RCTBluetoothSerialModule/issues/89
-                try {
-                    Log.i(TAG,"Trying fallback...");
-                    mmSocket = (BluetoothSocket) mmDevice.getClass().getMethod("createRfcommSocket", new Class[] {int.class}).invoke(mmDevice,1);
-                    mmSocket.connect();
-                    Log.i(TAG,"Connected");
-                } catch (Exception e2) {
-                    Log.e(TAG, "Couldn't establish a Bluetooth connection.");
-                    mModule.onError(e2);
-                    try {
-                        mmSocket.close();
-                    } catch (Exception e3) {
-                        Log.e(TAG, "unable to close() socket during connection failure", e3);
-                        mModule.onError(e3);
-                    }
-                    connectionFailed();
-                    return;
-                }
-            }
-
-            // Reset the ConnectThread because we're done
-            synchronized (RCTBluetoothSerialService.this) {
-                mConnectThread = null;
-            }
-
-            connectionSuccess(mmSocket, mmDevice);  // Start the connected thread
-
-        }
-
-        void cancel() {
-            try {
-                mmSocket.close();
-            } catch (Exception e) {
-                Log.e(TAG, "close() of connect socket failed", e);
-                mModule.onError(e);
-            }
         }
     }
 
@@ -317,14 +263,15 @@ class RCTBluetoothSerialService {
             while (true) {
                 try {
                     bytes = mmInStream.read(buffer); // Read from the InputStream
-                    String data = new String(buffer, 0, bytes, "ISO-8859-1");
-
-                    mModule.onData(data); // Send the new data String to the UI Activity
+                    StringBuilder sb = new StringBuilder();
+                    for (int n = 0; n < bytes; n++) {
+                        sb.append(String.valueOf(buffer[n]));
+                        sb.append(" ");
+                    }
+                    mModule.onData(sb.toString()); // Send the new data String to the UI Activity
                 } catch (Exception e) {
                     Log.e(TAG, "disconnected", e);
                     mModule.onError(e);
-                    // connectionLost();
-                    // RCTBluetoothSerialService.this.stop(); // Start the service over to restart listening mode
                     break;
                 }
             }
@@ -342,6 +289,8 @@ class RCTBluetoothSerialService {
                 ByteArrayInputStream bais = new ByteArrayInputStream(buffer);
                 byte[] smallbuffer = new byte[BUFFER_LEN];
                 int len;
+                if (D) Log.d(TAG, "Sleep for " + PRINT_DELAY);
+                TimeUnit.MILLISECONDS.sleep(PRINT_DELAY);                
                 while ((len = bais.read(smallbuffer)) != -1) {
                   if (D) Log.d(TAG, "Write buffer length =  " + len);
                   mmOutStream.write(smallbuffer, 0, len);
@@ -360,12 +309,14 @@ class RCTBluetoothSerialService {
             }
         }
 
-        void cancel() {
-            try {
+        void cancel() { 
+            if (mmSocket != null) {
+              try {
                 mmSocket.close();
-            } catch (Exception e) {
-                Log.e(TAG, "close() of connect socket failed", e);
-            }
+              } catch (Exception e) {
+                  Log.d(TAG, "Error disconnecting bluetooth socket", e);
+              }
+          }            
         }
     }
 }
