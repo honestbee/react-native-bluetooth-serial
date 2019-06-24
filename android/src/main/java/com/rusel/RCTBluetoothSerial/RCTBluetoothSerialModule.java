@@ -314,17 +314,20 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule
   public void pairDevice(String id, Promise promise) {
     if (D)
       Log.d(TAG, "Pair device: " + id);
-
-    if (mBluetoothAdapter != null) {
-      mPairDevicePromise = promise;
-      BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
-      if (device != null) {
-        pairDevice(device);
+    try {
+      if (mBluetoothAdapter != null) {
+        mPairDevicePromise = promise;
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
+        if (device != null) {
+          pairDevice(device);
+        } else {
+          mPairDevicePromise.reject(new Exception("Could not pair device " + id));
+          mPairDevicePromise = null;
+        }
       } else {
-        mPairDevicePromise.reject(new Exception("Could not pair device " + id));
-        mPairDevicePromise = null;
-      }
-    } else {
+        promise.resolve(false);
+      }      
+    } catch (Exception e) {
       promise.resolve(false);
     }
   }
@@ -336,17 +339,20 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule
   public void unpairDevice(String id, Promise promise) {
     if (D)
       Log.d(TAG, "Unpair device: " + id);
-
-    if (mBluetoothAdapter != null) {
-      mPairDevicePromise = promise;
-      BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
-      if (device != null) {
-        unpairDevice(device);
+    try {
+      if (mBluetoothAdapter != null) {
+        mPairDevicePromise = promise;
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
+        if (device != null) {
+          unpairDevice(device);
+        } else {
+          mPairDevicePromise.reject(new Exception("Could not unpair device " + id));
+          mPairDevicePromise = null;
+        }
       } else {
-        mPairDevicePromise.reject(new Exception("Could not unpair device " + id));
-        mPairDevicePromise = null;
-      }
-    } else {
+        promise.resolve(false);
+      }      
+    } catch (Exception e) {
       promise.resolve(false);
     }
   }
@@ -360,15 +366,19 @@ public class RCTBluetoothSerialModule extends ReactContextBaseJavaModule
    */
   public void connect(String id, Promise promise) {
     mConnectedPromise = promise;
-    if (mBluetoothAdapter != null) {
-      BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
-      if (device != null) {
-        mBluetoothService.connect(device);
+    try {
+      if (mBluetoothAdapter != null) {
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(id);
+        if (device != null) {
+          mBluetoothService.connect(device);
+        } else {
+          promise.reject(new Exception("Could not connect to " + id));
+        }
       } else {
-        promise.reject(new Exception("Could not connect to " + id));
-      }
-    } else {
-      promise.resolve(true);
+        promise.resolve(true);
+      }      
+    } catch (Exception e) {
+      promise.reject(new Exception("Could not connect to " + id));
     }
   }
 
